@@ -20,6 +20,7 @@ if __name__ == "__main__":
     gui = ti.GUI(background_color=0xFFFFFF)
 
     tag = False
+    frame = 0
     while gui.running:
         for e in gui.get_events(ti.GUI.PRESS):
             if e.key == ti.GUI.LMB:
@@ -40,6 +41,7 @@ if __name__ == "__main__":
         if tag==True:
             for i in range(5):
                 sphsolver.step()
+        frame += 1
         pinfo = ps.positions_p.to_numpy()
         cinfo = sphsolver.dump()
         gui.circles(cinfo * 50 / 512, 
@@ -48,4 +50,6 @@ if __name__ == "__main__":
         gui.circles(pinfo * 50 / 512,
                     radius = ps.particle_radius / 1.5 * 50,
                     color = 0x33ccff)
-        gui.show()
+        filename = f'{frame:04d}.png'   # create filename with suffix png
+        print(f'Frame {frame} is recorded in {filename}')
+        gui.show(filename)  # export and show in GUI

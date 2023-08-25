@@ -19,7 +19,7 @@ class SPHSolver:
         self.force = ti.Vector.field(2, ti.f32)
         force_node = ti.root.dense(ti.i, self.particle_s.particle_max_num)
         force_node.place(self.force)
-        self.dt = 4e-3
+        self.dt = 2e-3
 
         #collision
         self.collider = ti.Vector.field(2, ti.f32)
