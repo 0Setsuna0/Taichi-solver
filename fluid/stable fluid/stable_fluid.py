@@ -167,6 +167,7 @@ def main():
 
     gui = ti.GUI('my first fluid solver', (res, res))
 
+    frame = 0
     while gui.running:
         if gui.get_event(ti.GUI.PRESS):
             e = gui.event
@@ -177,8 +178,12 @@ def main():
             if e.key == 'r':
                 init_gridvalues()
         substep()
+        frame += 1
         gui.set_image(color)
-        gui.show()
+
+        filename = f'{frame:04d}.png'   # create filename with suffix png
+        print(f'Frame {frame} is recorded in {filename}')
+        gui.show(filename)  # export and show in GUI
 
 if __name__ == '__main__':
     main()
