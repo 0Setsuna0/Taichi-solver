@@ -1,2 +1,4 @@
 # Taichi-solver
-Implementations of some classic physics based simulation algorithm written by taichi
+![flip](https://github.com/0Setsuna0/Taichi-solver/blob/main/fluid/flip/out.gif)
+![sph](https://github.com/0Setsuna0/Taichi-solver/blob/main/fluid/sph/out.gif)
+![stable fluid](https://github.com/0Setsuna0/Taichi-solver/blob/main/fluid/stable%20fluid/out.gif)
