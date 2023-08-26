@@ -326,79 +326,66 @@ def vec2(x, y):
     return ti.Vector([x, y])
 
 @ti.func
-def gather_vp(grid_v, grid_vlast, xp, stagger):
-    inv_dx = vec2(1.0 / gridSpacing_x, 1.0 / gridSpacing_y).cast(ti.f32)
-    base = (xp * inv_dx - (stagger + 0.5)).cast(ti.i32)
-    fx = xp * inv_dx - (base.cast(ti.f32) + stagger)
+def g2p(v_g, v_g_last, pos, origin_x, origin_y):
+    #tricky is also to find out the left bottom sample point base
+    xp = pos_to_idx(pos, origin_x, origin_y) - ti.Vector([origin_x, origin_y])
+    base = int(xp)
+    fx = xp - base
+    w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1) ** 2, 0.5 * (fx - 0.5) ** 2]
 
-    w = [0.5*(1.5-fx)**2, 0.75-(fx-1)**2, 0.5*(fx-0.5)**2] # Bspline
+    pic = 0.0
+    flip = 0.0
 
-    v_pic = 0.0
-    v_flip = 0.0
+    for offset in ti.static(ti.ndrange(3,3)):
+        weight = 1.0
+        for i in ti.static(range(2)):
+            weight *= w[offset[i]][i]
+        pic += weight * v_g[base + offset] #pic is gaining the new velocity from grid to particle
+        flip += weight * (v_g[base + offset] - v_g_last[base + offset])#flip is gaining the difference of new and old vel field from grid to particle
 
-    for i in ti.static(range(3)):
-        for j in ti.static(range(3)):
-            offset = vec2(i, j)
-            weight = w[i][0] * w[j][1]
-            v_pic += weight * grid_v[base + offset]
-            v_flip += weight * (grid_v[base + offset] - grid_vlast[base + offset])
-
-    return v_pic, v_flip
+    return pic, flip
 
 @ti.kernel
-def G2P():
-    stagger_u = vec2(0.0, 0.5)
-    stagger_v = vec2(0.5, 0.0)
+def grid_to_particle():
     for p in ti.grouped(particle_positions):
         if particle_type[p] == P_FLUID:
-            # update velocity
-            xp = particle_positions[p]
-            u_pic, u_flip = gather_vp(u_g, u_last_g, xp, stagger_u)
-            v_pic, v_flip = gather_vp(v_g, v_last_g, xp, stagger_v)
+            pic_u, flip_u = g2p(u_g, u_last_g, particle_positions[p], 0, 0.5)
+            pic_v, flip_v = g2p(v_g, v_last_g, particle_positions[p], 0.5, 0)
+            pic = ti.Vector([pic_u, pic_v])
+            flip = particle_velocities[p] + ti.Vector([flip_u, flip_v])
 
-            new_v_pic = vec2(u_pic, v_pic)
-
-
-            new_v_flip = particle_velocities[p] + vec2(u_flip, v_flip)
-
-            particle_velocities[p] = flip_coef * new_v_flip + (
-                    1 - flip_coef) * new_v_pic
+            particle_velocities[p] = flip_coef * flip + (1 - flip_coef) * pic
 
 @ti.func
-def scatter_vp(grid_v, grid_m, xp, vp, stagger):
+def p2g(v_g, w_g, pos, vel, origin_x, origin_y):
     inv_dx = vec2(1.0 / gridSpacing_x, 1.0 / gridSpacing_y).cast(ti.f32)
-    base = (xp * inv_dx - (stagger + 0.5)).cast(ti.i32)
-    fx = xp * inv_dx - (base.cast(ti.f32) + stagger)
+    base = (pos * inv_dx - (ti.Vector([origin_x, origin_y]) + 0.5)).cast(ti.i32)
+    fx = pos * inv_dx - (base.cast(ti.f32) + ti.Vector([origin_x, origin_y]))
 
-    w = [0.5*(1.5-fx)**2, 0.75-(fx-1)**2, 0.5*(fx-0.5)**2] # Bspline
+    w = [0.5 * (1.5 - fx) ** 2, 0.75 - (fx - 1) ** 2, 0.5 * (fx - 0.5) ** 2]
 
-    for i in ti.static(range(3)):
-        for j in ti.static(range(3)):
-            offset = vec2(i, j)
-            weight = w[i][0] * w[j][1]
-            grid_v[base + offset] += weight * vp
-            grid_m[base + offset] += weight
+    for offset in ti.static(ti.ndrange(3, 3)):
+        weight = 1.0
+        for i in ti.static(range(2)):
+            weight *= w[offset[i]][i]
+        
+        v_g[base + offset] += weight * vel
+        w_g[base + offset] += weight
 
 @ti.kernel
-def P2G():
-    stagger_u = vec2(0.0, 0.5)
-    stagger_v = vec2(0.5, 0.0)
+def particle_to_grid():
     for p in ti.grouped(particle_positions):
         if particle_type[p] == P_FLUID:
-            xp = particle_positions[p]
-
-
-            scatter_vp(u_g, weight_u_g, xp, particle_velocities[p][0],
-                           stagger_u)
-            scatter_vp(v_g, weight_v_g, xp, particle_velocities[p][1],
-                           stagger_v)
-    for i, j in u_g:
-        if weight_u_g[i, j] > 0:
-            u_g[i, j] = u_g[i, j] / weight_u_g[i, j]
-
-    for i, j in v_g:
-        if weight_v_g[i, j] > 0:
-            v_g[i, j] = v_g[i, j] / weight_v_g[i, j]
+            p2g(u_g, weight_u_g, particle_positions[p], particle_velocities[p][0], 0.0, 0.5)
+            p2g(v_g, weight_v_g, particle_positions[p], particle_velocities[p][1], 0.5, 0.0)
+    
+    for I in ti.grouped(u_g):
+        if weight_u_g[I] > 0:
+            u_g[I] = u_g[I] / weight_u_g[I]
+    
+    for I in ti.grouped(v_g):
+        if weight_v_g[I] > 0:
+            v_g[I] = v_g[I] / weight_v_g[I]
 
 @ti.kernel
 def advect_particles(dt: ti.f32):
@@ -456,7 +443,7 @@ def step():
     apply_boundary_condition()
 
     #g2p
-    G2P()
+    grid_to_particle()
     advect_particles(dt)
     update_label()
 
@@ -468,7 +455,7 @@ def step():
     pressure_g.fill(0.0)
     
     #p2g
-    P2G()
+    particle_to_grid()
 
     u_last_g.copy_from(u_g)
     v_last_g.copy_from(v_g)
@@ -555,7 +542,7 @@ def draw(frame):
     
     filename = f'{frame:04d}.png'   # create filename with suffix png
     print(f'Frame {frame} is recorded in {filename}')
-    gui.show(filename)  # export and show in GUI
+    gui.show()  # export and show in GUI
 
 
 def simulate():
