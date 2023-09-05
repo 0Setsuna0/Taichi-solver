@@ -7,6 +7,7 @@ ti.init(arch=ti.gpu, device_memory_GB=4, packed=True)
 if __name__ == "__main__":
     ps = ParticleSystem()
     
+    
     ps.add_cube(lower_corner=[6, 2],
                 cube_size=[3.0, 3.0],
                 velocity=[-5.0, -10.0],
